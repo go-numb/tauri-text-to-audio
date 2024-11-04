@@ -1,4 +1,9 @@
-use std::{fs::File, io::BufReader, process::Command};
+use std::{
+    fs::File,
+    io::{self, BufReader},
+    os::windows::process::CommandExt,
+    process::Command,
+};
 
 use rodio::{Decoder, OutputStream, Sink};
 
@@ -10,10 +15,11 @@ fn to_audio(text: &str) -> String {
 
     // 出力デバイスとストリームの取得
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+    let sink = Sink::try_new(&stream_handle).unwrap();
 
     let output = "output.wav";
     for sentence in sentences {
-        speech(&sentence, output);
+        let _ = speech(&sentence, output);
 
         // play audio
         // 音声ファイルを再生
@@ -21,33 +27,41 @@ fn to_audio(text: &str) -> String {
         let source = Decoder::new(file).unwrap();
 
         // シンクを作成して音声を再生
-        let sink = Sink::try_new(&stream_handle).unwrap();
         sink.append(source);
         sink.sleep_until_end(); // 再生が終わるまで待機
     }
+
     "".to_string()
 }
 
 // コマンドで音声ファイルを作成し保存する
-fn speech(text: &str, output: &str) {
+fn speech(text: &str, output: &str) -> Result<(), io::Error> {
     let lang = "ja-JP";
     let voice = "ja-JP-Wavenet-C";
 
-    let result = Command::new("speech.exe")
-        .arg("--output")
-        .arg(output)
-        .arg("--lang")
-        .arg(lang)
-        .arg("--voice")
-        .arg(voice)
-        .arg("--text")
-        .arg(text)
-        .output()
-        .expect("failed to execute process");
+    let mut command = Command::new("speech.exe");
 
-    println!("status: {}", result.status);
-    println!("stdout: {}", String::from_utf8_lossy(&result.stdout));
-    println!("stderr: {}", String::from_utf8_lossy(&result.stderr));
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+
+    let status = command
+        .args([
+            "--output", output, "--lang", lang, "--voice", voice, "--text", text,
+        ])
+        .status()?;
+
+    if !status.success() {
+        eprintln!(
+            "Error: Failed to generate blank video - status: {:?}",
+            status
+        );
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Failed to generate blank video",
+        ));
+    }
+
+    Ok(())
 }
 
 fn split_by_stop_words(text: &str) -> Vec<String> {

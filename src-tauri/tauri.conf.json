@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "tauri-text-to-audio",
-        "width": 280,
+        "width": 420,
         "height": 280
       }
     ],
